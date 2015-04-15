@@ -10,15 +10,25 @@ namespace NextBus_Sort
 {
     class Program
     {
+        static Boolean singleFile = false;
+
+        static List<string> routeTitles = new List<string>();
+        static List<Stop> sortedList = new List<Stop>();
+
         static void Main(string[] args)
         {
+            Console.Write("This program will output two database files.\nDo you want to create a single database file instead? [y/n] ");
+            string input = Console.ReadLine();
+
+            if (input.Equals("y"))
+                singleFile = true;
+
             //Get XML listing all routes of SF Muni
             XmlTextReader reader = new XmlTextReader("http://webservices.nextbus.com/service/publicXMLFeed?command=routeList&a=sf-muni");
             List<string> routeNums = new List<string>();
-            List<string> routeTitles = new List<string>();
 
             //Read each XML line and add the route number or letter to a list
-            Console.WriteLine("Getting route list...");
+            Console.WriteLine("\nGetting route list...");
             while (reader.Read())
             {
                 switch (reader.NodeType)
@@ -35,9 +45,6 @@ namespace NextBus_Sort
                 }
             }
 
-            //Create db of routes
-            Console.WriteLine("Writing to routes database...");
-
             String routes = "routes.sqlite";
             String stops = "stops.sqlite";
             String db = "Databases";
@@ -52,16 +59,21 @@ namespace NextBus_Sort
             if (File.Exists(stops))
                 File.Delete(stops);
 
-            var routesDb = new SQLiteConnection(routes);
-            routesDb.CreateTable<RouteData>();
-
-            for (int i = 0; i < routeTitles.Count; i++)
+            //Create db of routes
+            if(!singleFile)
             {
-                routesDb.Insert(new RouteData(routeTitles[i]));
-            }
-            Console.WriteLine("---routes.sqlite created---");
+                Console.WriteLine("\nWriting to routes database...");
 
-            System.Console.WriteLine("Getting bus stops...");
+                var routesDb = new SQLiteConnection(routes);
+                routesDb.CreateTable<RouteData>();
+                for (int i = 0; i < routeTitles.Count; i++)
+                {
+                    routesDb.Insert(new RouteData(routeTitles[i]));
+                }
+                Console.WriteLine("---routes.sqlite created---");
+            } 
+
+            System.Console.WriteLine("\nGetting bus stops...");
             List<Stop> allStopsList = new List<Stop>();
             string base_xml = "http://webservices.nextbus.com/service/publicXMLFeed?command=routeConfig&a=sf-muni&r=";
             string temp;
@@ -114,7 +126,7 @@ namespace NextBus_Sort
             }
 
             //Prepare to sort all the stops for duplicates and output results to a text file
-            System.Console.WriteLine("Merging bus stops...");
+            System.Console.WriteLine("\nMerging bus stops...");
             string key;
 
             List<Stop> firstSort = new List<Stop>();
@@ -171,11 +183,11 @@ namespace NextBus_Sort
             }
 
             //Prepare for second sort to remove similar bus stops e.g. 5th & Mission St / Mission St. & 5th St
-            System.Console.WriteLine("Sorting stops...");
+            System.Console.WriteLine("\nSorting stops...");
             string[] titleSplit;
             found.Clear();
             used.Clear();
-            List<Stop> secondSort = new List<Stop>();
+
             foreach (Stop s in firstSort)
             {
                 titleSplit = s.title.Split('&');
@@ -208,22 +220,53 @@ namespace NextBus_Sort
                         }
                     }
                     used.Add(key);
-                    secondSort.Add(s);
+                    sortedList.Add(s);
                 }
             }
 
-            System.Console.WriteLine("Writing to stops database...");
-            var stopsDb = new SQLiteConnection(stops);
-            stopsDb.CreateTable<StopData>();
-
-            for (int k = 0; k < secondSort.Count; k++)
+            //Create db of stops
+            if(!singleFile)
             {
-                stopsDb.Insert(new StopData(secondSort[k].title, Double.Parse(secondSort[k].lon), Double.Parse(secondSort[k].lat), secondSort[k].ListRoutes(), secondSort[k].ListTags()));
+                System.Console.WriteLine("\nWriting to stops database...\nThis might take a few seconds...");
+                var stopsDb = new SQLiteConnection(stops);
+                stopsDb.CreateTable<StopData>();
+
+                for (int k = 0; k < sortedList.Count; k++)
+                {
+                    stopsDb.Insert(new StopData(sortedList[k].title, Double.Parse(sortedList[k].lon), Double.Parse(sortedList[k].lat), sortedList[k].ListRoutes(), sortedList[k].ListTags()));
+                }
+
+                Console.WriteLine("---stops.sqlite created---");
             }
 
-            Console.WriteLine("---stops.sqlite created---");
-            System.Console.WriteLine("Finished!\n\nPress any key to exit");
+            if (singleFile)
+                CreateSingleFile();
+            
+            System.Console.WriteLine("\nFinished!\n\nPress any key to exit");
             Console.ReadKey();
+        }
+
+        private static void CreateSingleFile()
+        {
+            if (File.Exists("AgencyData.sqlite"))
+                File.Delete("AgencyData.sqlite");
+
+            Console.WriteLine("\nCreating merged database...");
+            var dbConn = new SQLiteConnection("AgencyData.sqlite");
+            dbConn.CreateTable<StopData>();
+            dbConn.CreateTable<RouteData>();
+
+           Console.WriteLine("\nWriting route data..."); 
+            for (int i = 0; i < routeTitles.Count; i++)
+            {
+                dbConn.Insert(new RouteData(routeTitles[i]));
+            };
+
+            Console.WriteLine("\nWriting stop data\nThis might a few seconds...");
+            for (int k = 0; k < sortedList.Count; k++)
+            {
+                dbConn.Insert(new StopData(sortedList[k].title, Double.Parse(sortedList[k].lon), Double.Parse(sortedList[k].lat), sortedList[k].ListRoutes(), sortedList[k].ListTags()));
+            }
         }
     }
 
