@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Xml;
+using SQLite;
+using NextBus_Sort.DataModels;
 
 namespace NextBus_Sort
 {
@@ -33,17 +35,33 @@ namespace NextBus_Sort
                 }
             }
 
-            //Print out list of routes
-            Console.WriteLine("Writing routes to text file...");
-            StreamWriter output = new StreamWriter("routes.txt");
+            //Create db of routes
+            Console.WriteLine("Writing to routes database...");
+
+            String routes = "routes.sqlite";
+            String stops = "stops.sqlite";
+            String db = "Databases";
+
+            if (!Directory.Exists(db))
+                Directory.CreateDirectory(db);
+            Directory.SetCurrentDirectory(db);
+
+            if (File.Exists(routes))
+                File.Delete(routes);
+
+            if (File.Exists(stops))
+                File.Delete(stops);
+
+            var routesDb = new SQLiteConnection(routes);
+            routesDb.CreateTable<RouteData>();
+
             for (int i = 0; i < routeTitles.Count; i++)
             {
-                output.WriteLine(routeTitles[i].ToString());
+                routesDb.Insert(new RouteData(routeTitles[i]));
             }
-            output.Close();
-            Console.WriteLine("---routes.txt created---");
+            Console.WriteLine("---routes.sqlite created---");
 
-            System.Console.WriteLine("Getting all bus stops...");
+            System.Console.WriteLine("Getting bus stops...");
             List<Stop> allStopsList = new List<Stop>();
             string base_xml = "http://webservices.nextbus.com/service/publicXMLFeed?command=routeConfig&a=sf-muni&r=";
             string temp;
@@ -97,7 +115,6 @@ namespace NextBus_Sort
 
             //Prepare to sort all the stops for duplicates and output results to a text file
             System.Console.WriteLine("Merging bus stops...");
-            output = new StreamWriter("sorted.txt");
             string key;
 
             List<Stop> firstSort = new List<Stop>();
@@ -195,14 +212,16 @@ namespace NextBus_Sort
                 }
             }
 
-            System.Console.WriteLine("Writing sorted list to text file...");
+            System.Console.WriteLine("Writing to stops database...");
+            var stopsDb = new SQLiteConnection(stops);
+            stopsDb.CreateTable<StopData>();
+
             for (int k = 0; k < secondSort.Count; k++)
             {
-                output.WriteLine(secondSort[k].title + "%" + secondSort[k].lon + "%" + secondSort[k].lat + "%" + secondSort[k].ListRoutes() + "%" + secondSort[k].ListStopTags() + "%" + secondSort[k].ListTags());
+                stopsDb.Insert(new StopData(secondSort[k].title, Double.Parse(secondSort[k].lon), Double.Parse(secondSort[k].lat), secondSort[k].ListRoutes(), secondSort[k].ListTags()));
             }
-            output.Close();
-            Console.WriteLine("---sorted.txt created---");
 
+            Console.WriteLine("---stops.sqlite created---");
             System.Console.WriteLine("Finished!\n\nPress any key to exit");
             Console.ReadKey();
         }
